@@ -11,42 +11,36 @@ const redis = new Redis({
 });
 redis.on('error', (err) => console.error('🔴 Redis error:', err));
 
-// Redis keys
 const PLAYER_HASH = 'rlt:players';
 const LEADERBOARD = 'rlt:leaderboard';
 const FOOD_HASH = 'rlt:foods';
+const TICK_RATE_MS = 1000;
 
-// On startup: clear old game state and initialize foods
-async function resetGame() {
-  await redis.del(PLAYER_HASH, LEADERBOARD, FOOD_HASH);
-  console.log('[INIT] Cleared old game data');
-  // seed 100 food items
-  const multi = redis.multi();
-  for (let i = 0; i < 100; i++) {
-    const id = randomUUID();
-    const food: Food = { id, x: rand(-500, 500), y: rand(-500, 500), size: 5 };
-    multi.hset(FOOD_HASH, id, JSON.stringify(food));
-  }
-  await multi.exec();
-  console.log('[INIT] Seeded 100 food items');
-}
-
-resetGame().catch(console.error);
-
-// HTTP + Socket.IO
-const httpServer = http.createServer();
-const io = new SocketIOServer(httpServer, { cors: { origin: '*' } });
-
-// Util: random
 function rand(min: number, max: number) {
   return Math.random() * (max - min) + min;
 }
 
-io.on('connection', (socket) => {
-  const nick = (socket.handshake.query.nick as string) || 'Anonymous';
-  const id = socket.id;
+(async () => {
+  await redis.del(PLAYER_HASH, LEADERBOARD, FOOD_HASH);
+  const m = redis.multi();
+  for (let i = 0; i < 100; i++) {
+    const id = randomUUID();
+    m.hset(
+      FOOD_HASH,
+      id,
+      JSON.stringify({ id, x: rand(-500, 500), y: rand(-500, 500), size: 5 })
+    );
+  }
+  await m.exec();
+})().catch(console.error);
 
-  // Create and store new player
+const httpServer = http.createServer();
+const io = new SocketIOServer(httpServer, { cors: { origin: '*' } });
+
+io.on('connection', (socket) => {
+  const id = socket.id;
+  const nick = (socket.handshake.query.nick as string) || 'Anonymous';
+
   const player: Player = {
     id,
     nick,
@@ -58,7 +52,7 @@ io.on('connection', (socket) => {
   redis.hset(PLAYER_HASH, id, JSON.stringify(player));
   redis.zadd(LEADERBOARD, player.size, id);
 
-  socket.on('move', async (dir: { x: number; y: number }) => {
+  socket.on('move', async (dir) => {
     try {
       const data = await redis.hget(PLAYER_HASH, id);
       if (!data) return;
@@ -78,86 +72,88 @@ io.on('connection', (socket) => {
   });
 });
 
-const TICK_RATE_MS = 1000;
 setInterval(async () => {
   try {
-    // Fetch all players & foods
-    const [rawPlayers, rawFoods] = await Promise.all([
+    const [rawP, rawF] = await Promise.all([
       redis.hgetall(PLAYER_HASH),
       redis.hgetall(FOOD_HASH),
     ]);
-    const players = Object.values(rawPlayers).map((item) =>
+    let players = Object.values(rawP).map((item) =>
       JSON.parse(item)
     ) as Player[];
-    const foods = Object.values(rawFoods).map((item) =>
-      JSON.parse(item)
-    ) as Food[];
+    const foods = Object.values(rawF).map((item) => JSON.parse(item)) as Food[];
 
-    // Prepare batch
-    const batch = redis.multi();
-    let respawnCount = 0;
+    const toRemove = new Set<string>();
+    const respawnOps = [] as { id: string; data: string }[];
     const MAX_FOODS = 100;
+    const batch = redis.multi();
 
-    // Collisions & updates
+    // Player-player
     for (let i = 0; i < players.length; i++) {
-      const a = players[i];
-      // player-player collisions
       for (let j = i + 1; j < players.length; j++) {
-        const b = players[j];
+        const a = players[i],
+          b = players[j];
+        if (toRemove.has(a.id) || toRemove.has(b.id)) continue;
         const d = Math.hypot(a.x - b.x, a.y - b.y);
         if (d < a.size && a.size > b.size * 1.1) {
           a.size += b.size * 0.2;
-          batch.hdel(PLAYER_HASH, b.id).zrem(LEADERBOARD, b.id);
+          toRemove.add(b.id);
         } else if (d < b.size && b.size > a.size * 1.1) {
           b.size += a.size * 0.2;
-          batch.hdel(PLAYER_HASH, a.id).zrem(LEADERBOARD, a.id);
+          toRemove.add(a.id);
         }
       }
+    }
+    players = players.filter((p) => !toRemove.has(p.id));
+    toRemove.forEach((id) => batch.hdel(PLAYER_HASH, id).zrem(LEADERBOARD, id));
+
+    let currentFoodCount = foods.length;
+    for (const p of players) {
       for (const f of foods) {
-        const d = Math.hypot(a.x - f.x, a.y - f.y);
-        if (d < a.size) {
-          a.size += f.size * 0.5;
+        const d = Math.hypot(p.x - f.x, p.y - f.y);
+        if (d < p.size) {
+          p.size += f.size * 0.5;
           batch.hdel(FOOD_HASH, f.id);
-          // only respawn if under limit
-          if (foods.length - respawnCount < MAX_FOODS) {
-            const newId = randomUUID();
-            const nf: Food = {
-              id: newId,
+          currentFoodCount--;
+          if (currentFoodCount < MAX_FOODS) {
+            const idNew = randomUUID();
+            const nf = {
+              id: idNew,
               x: rand(-500, 500),
               y: rand(-500, 500),
               size: 5,
             };
-            batch.hset(FOOD_HASH, newId, JSON.stringify(nf));
-            respawnCount++;
+            respawnOps.push({ id: idNew, data: JSON.stringify(nf) });
+            currentFoodCount++;
           }
         }
       }
-      batch.hset(PLAYER_HASH, a.id, JSON.stringify(a));
-      batch.zadd(LEADERBOARD, a.size, a.id);
     }
+    respawnOps.forEach((o) => batch.hset(FOOD_HASH, o.id, o.data));
 
-    // Exec batch
+    players.forEach((p) =>
+      batch
+        .hset(PLAYER_HASH, p.id, JSON.stringify(p))
+        .zadd(LEADERBOARD, p.size, p.id)
+    );
     await batch.exec();
 
-    // Leaders (only real players)
+    // Leaders
     const top = await redis.zrevrange(
       LEADERBOARD,
       0,
       players.length - 1,
       'WITHSCORES'
     );
-    const leaders = [] as { id: string; size: number }[];
-    for (let i = 0; i < top.length; i += 2) {
+    const leaders: { id: string; size: number }[] = [];
+    for (let i = 0; i < top.length; i += 2)
       leaders.push({ id: top[i], size: parseFloat(top[i + 1]) });
-    }
 
-    // Emit state
     io.emit('state', { players, foods, leaders });
   } catch (err) {
     console.error('[BROADCAST ERROR]', err);
   }
-}, TICK_RATE_MS);
+}, TICK_RATE_MS / 60);
 
-// Start server
 const PORT = +(process.env.PORT || 3001);
 httpServer.listen(PORT, () => console.log(`Server running on port ${PORT}`));
