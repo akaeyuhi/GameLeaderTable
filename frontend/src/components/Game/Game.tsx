@@ -30,6 +30,7 @@ export function Game() {
 
       if (!payload.players.some((p) => p.id === socket.id)) {
         alert('You were eaten! Refresh to play again.');
+        window.location.reload();
       }
     };
 
@@ -74,12 +75,53 @@ export function Game() {
     return ((clamped + WORLD_HALF) / (WORLD_HALF * 2)) * VIEWPORT_HEIGHT;
   };
 
+  const leftEdge = worldToScreenX(-WORLD_HALF);
+  const rightEdge = worldToScreenX(+WORLD_HALF);
+  const topEdge = worldToScreenY(+WORLD_HALF);
+  const bottomEdge = worldToScreenY(-WORLD_HALF);
+
   return (
     <div className="flex">
       <div
         className="relative bg-gray-50 border overflow-hidden"
         style={{ width: VIEWPORT_WIDTH, height: VIEWPORT_HEIGHT }}
       >
+        <div
+          className="absolute bg-red-500"
+          style={{
+            left: `${leftEdge}px`,
+            top: `0px`,
+            width: `2px`,
+            height: `${VIEWPORT_HEIGHT}px`,
+          }}
+        />
+        <div
+          className="absolute bg-red-500"
+          style={{
+            left: `${rightEdge}px`,
+            top: `0px`,
+            width: `2px`,
+            height: `${VIEWPORT_HEIGHT}px`,
+          }}
+        />
+        <div
+          className="absolute bg-red-500"
+          style={{
+            left: `0px`,
+            top: `${topEdge}px`,
+            width: `${VIEWPORT_WIDTH}px`,
+            height: `2px`,
+          }}
+        />
+        <div
+          className="absolute bg-red-500"
+          style={{
+            left: `0px`,
+            top: `${bottomEdge}px`,
+            width: `${VIEWPORT_WIDTH}px`,
+            height: `2px`,
+          }}
+        />
         {foods.map((f) => (
           <Cell
             key={f.id}
