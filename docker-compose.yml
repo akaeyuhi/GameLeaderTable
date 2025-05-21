@@ -31,3 +31,11 @@ services:
       - backend
     environment:
       - VITE_WS_URL=ws://localhost:3001
+
+  redis-insight:
+    image: redis/redisinsight:latest
+    container_name: rlt-redis-insight
+    ports:
+      - "5540:5540"
+    depends_on:
+      - redis
