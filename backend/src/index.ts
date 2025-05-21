@@ -34,7 +34,7 @@ function getRedisFoodId(id: string) {
   for (let i = 0; i < 100; i++) {
     for (let i = 0; i < 100; i++) {
       const id = randomUUID();
-      m.hset(`${FOOD_KEY}:${id}`, {
+      m.hset(getRedisFoodId(id), {
         id: id,
         x: rand(-500, 500).toString(),
         y: rand(-500, 500).toString(),
@@ -49,16 +49,16 @@ const httpServer = http.createServer();
 const io = new SocketIOServer(httpServer, { cors: { origin: '*' } });
 
 io.on('connection', (socket) => {
-  const id = socket.id;
-  const playerRedisId = PLAYER_KEY.concat(':', id);
+  const id = randomUUID();
+  const playerRedisId = getRedisPlayerId(id);
   const nick = (socket.handshake.query.nick as string) || 'Anonymous';
   const startingPlayerSize = 20;
   const playerColor = `hsl(${Math.random() * 360},70%,50%)`
 
   redis.hset(playerRedisId, {
     nick: nick,
-    x: '0',
-    y: '0',
+    x: rand(-500, 500).toString(),
+    y: rand(-500, 500).toString(),
     size: startingPlayerSize.toString(),
     color: playerColor
   });
@@ -67,22 +67,17 @@ io.on('connection', (socket) => {
 
   socket.on('move', async (dir) => {
     try {
-      const xStr = await redis.hget(playerRedisId, 'x');
-      const yStr = await redis.hget(playerRedisId, 'y');
-      const sizeStr = await redis.hget(playerRedisId, 'size');
+      const player = await redis.hgetall(getRedisPlayerId(id));
+      if (!player) return;
 
-      let x = parseFloat(xStr ?? '0');
-      let y = parseFloat(yStr ?? '0');
-      const size = parseFloat(sizeStr ?? '20');
-
-      x = Math.max(-500, Math.min(500, x + dir.x * 5));
-      y = Math.max(-500, Math.min(500, y + dir.y * 5));
+      let x = Math.max(-500, Math.min(500, parseFloat(player.x) + dir.x * 5));
+      let y = Math.max(-500, Math.min(500, parseFloat(player.y) + dir.y * 5));
       
       await redis.hset(playerRedisId, {
         x: x.toString(),
         y: y.toString()
       });
-      await redis.zadd(LEADERBOARD_KEY, size, playerRedisId);
+      await redis.zadd(LEADERBOARD_KEY, player.size, playerRedisId);
     } catch (err) {
       console.error('[MOVE ERROR]', err);
     }
@@ -166,7 +161,7 @@ setInterval(async () => {
     players = players.filter((p) => !toRemove.has(p.id));
     toRemove.forEach(id => {
       let playerRedisId = getRedisPlayerId(id);
-      batch.hdel(playerRedisId).zrem(LEADERBOARD_KEY, playerRedisId);
+      batch.del(playerRedisId).zrem(LEADERBOARD_KEY, playerRedisId);
     });
 
     let currentFoodCount = foods.length;
@@ -176,7 +171,7 @@ setInterval(async () => {
         if (d < p.size) {
           p.size += f.size * 0.5;
           let redisFoodId = getRedisFoodId(f.id);
-          batch.hdel(redisFoodId);
+          batch.del(redisFoodId);
           currentFoodCount--;
           if (currentFoodCount < MAX_FOODS) {
             const idNew = randomUUID();
@@ -203,6 +198,9 @@ setInterval(async () => {
     );
 
     players.forEach((p) => {
+      if (!p.x) {
+        return;
+      }
       let playerRedisId = getRedisPlayerId(p.id);
         batch.hset(playerRedisId, {
             x: p.x,
