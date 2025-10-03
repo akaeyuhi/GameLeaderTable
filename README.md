@@ -52,7 +52,6 @@ GameLeaderTable is a **real-time multiplayer arcade game** inspired by the class
 ### **Frontend (React + TypeScript)**
 - **Framework**: React 19 with functional components and modern hooks
 - **Styling**: Tailwind CSS v4 for responsive, utility-first design
-- **State Management**: Zustand for lightweight, scalable state management
 - **Real-time Updates**: Socket.io-client for seamless server communication
 - **Canvas Rendering**: HTML5 Canvas for smooth 60fps game rendering
 
@@ -175,13 +174,6 @@ docker run -d -p 6379:6379 redis:7-alpine
    - Avoid larger players who can eat you!
 5. **Climb Leaderboard**: Compete for the top position shown on the right side
 
-### 🎯 Game Strategy Tips
-- **Early Game**: Focus on food collection to reach minimum viable size
-- **Mid Game**: Hunt smaller players while avoiding larger threats  
-- **Late Game**: Use size advantage strategically - you're slower but deadlier
-- **Positioning**: Use map boundaries to corner smaller players
-- **Risk Management**: Sometimes it's better to retreat than risk being consumed
-
 ## 🔧 Development
 
 ### **Project Structure**
@@ -255,25 +247,6 @@ PORT=3001                # Backend server port
 VITE_WS_URL=ws://localhost:3001    # WebSocket server URL
 ```
 
-## 📊 Performance & Scalability
-
-### **Redis Data Structures**
-- **Players**: `rlt:players` hash storing serialized player objects
-- **Leaderboard**: `rlt:leaderboard` sorted set ordered by player size
-- **Food**: `rlt:foods` hash storing food particle positions and properties
-
-### **Game Performance**
-- **Tick Rate**: 60 FPS equivalent (16.67ms intervals) for smooth gameplay
-- **State Synchronization**: Optimized batch operations with Redis multi/exec
-- **Memory Management**: Automatic cleanup of disconnected players and consumed food
-- **Network Efficiency**: Minimal data transmission with delta compression
-
-### **Scalability Considerations**
-- **Horizontal Scaling**: Redis Cluster support for multi-node deployments
-- **Load Balancing**: Socket.io adapter for multi-server instances
-- **Monitoring**: Redis Insight integration for real-time performance metrics
-- **Resource Management**: Configurable food density and player limits
-
 ## 🧪 Redis Database Schema
 
 ### **Data Models**
@@ -315,27 +288,6 @@ HGETALL rlt:foods
 MONITOR
 ```
 
-## 🔮 Educational Value
-
-This project demonstrates several important computer science concepts:
-
-### **Database Concepts**
-- **NoSQL Design**: Redis key-value store usage patterns
-- **Data Structures**: Practical application of hashes, sets, and sorted sets
-- **Performance Optimization**: O(1) and O(log N) operations for real-time gaming
-- **ACID Properties**: Understanding eventual consistency in distributed systems
-
-### **Network Programming**
-- **WebSocket Protocol**: Real-time bidirectional communication
-- **Event-Driven Architecture**: Socket.io event handling and room management
-- **Latency Optimization**: Minimizing network round-trips for game responsiveness
-
-### **Software Architecture**
-- **Client-Server Model**: Authoritative server with client prediction
-- **Type Safety**: TypeScript for reduced bugs and better maintainability
-- **Containerization**: Docker for consistent development environments
-- **Separation of Concerns**: Clear boundaries between game logic and presentation
-
 ## 🚀 Deployment
 
 ### **Production Deployment**
@@ -362,26 +314,6 @@ CORS_ORIGIN=https://yourdomain.com
 - Application logs for error tracking  
 - WebSocket connection metrics
 - Real-time player count and game statistics
-
-## 🛣️ Future Enhancements
-
-### **Gameplay Features**
-- **Power-ups**: Temporary speed boosts, size multipliers, or special abilities
-- **Game Modes**: Team battles, survival mode, or time-limited challenges
-- **Achievements System**: Player progression and unlock rewards
-- **Spectator Mode**: Watch ongoing games without participating
-
-### **Technical Improvements**
-- **Anti-cheat System**: Server-side validation and anomaly detection
-- **Advanced Physics**: More realistic collision detection and momentum
-- **Mobile Optimization**: Touch controls and responsive design improvements
-- **Analytics Dashboard**: Detailed game statistics and player behavior analysis
-
-### **Scalability Upgrades**
-- **Multi-room Support**: Separate game instances for different player groups
-- **Global Leaderboards**: Cross-session player rankings and statistics
-- **Load Balancing**: Multiple server instances with Redis adapter
-- **CDN Integration**: Asset delivery optimization for global players
 
 ## 📄 License
 
